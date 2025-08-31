@@ -13,10 +13,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "types": "./dist/index.d.ts",
-  "module": "./dist/index.js",
-  "exports": "./dist/index.js",
   "n8n": {
     "nodes": [
       "dist/nodes/LojikAccounting/LojikAccounting.node.js"

@@ -1,6 +1,6 @@
 import type sqlite3 from 'sqlite3';
 type Database = sqlite3.Database;
-import { allAsync } from '../db/connection.js';
+import { allAsync } from '../db/connection';
 import type {
     Account,
     BalanceSheetReport,
@@ -8,7 +8,7 @@ import type {
     LedgerReport,
     ProfitLossReport,
     TrialBalanceReport,
-} from '../types/index.js';
+} from '../types/index';
 
 export async function getTrialBalance(db: Database): Promise<TrialBalanceReport> {
     const rows = await allAsync<

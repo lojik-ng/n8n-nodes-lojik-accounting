@@ -1,7 +1,7 @@
 import type sqlite3 from 'sqlite3';
 type Database = sqlite3.Database;
-import { allAsync, execAsync, getAsync, withTransaction } from '../db/connection.js';
-import type { Account } from '../types/index.js';
+import { allAsync, execAsync, getAsync, withTransaction } from '../db/connection';
+import type { Account } from '../types/index';
 
 export async function createAccount(db: Database, input: {
     code: string;

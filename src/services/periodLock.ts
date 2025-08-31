@@ -1,6 +1,6 @@
 import type sqlite3 from 'sqlite3';
 type Database = sqlite3.Database;
-import { execAsync, getAsync } from '../db/connection.js';
+import { execAsync, getAsync } from '../db/connection';
 
 export async function setPeriodLock(db: Database, throughDate: string): Promise<void> {
     await execAsync(

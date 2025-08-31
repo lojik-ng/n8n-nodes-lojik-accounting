@@ -1,4 +1,4 @@
-import { LojikAccountingTool, type LojikCredentials } from './tool.js';
+import { LojikAccountingTool, type LojikCredentials } from './tool';
 
 // Minimal n8n Community Tool registration object
 // This mirrors the pattern used by n8n AI Agent tools: expose name, description,

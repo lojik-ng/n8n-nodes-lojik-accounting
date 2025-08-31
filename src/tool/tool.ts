@@ -1,6 +1,6 @@
 import type sqlite3 from 'sqlite3';
 type Database = sqlite3.Database;
-import { getDb } from '../db/connection.js';
+import { getDb } from '../db/connection';
 import {
     createAccountInput,
     updateAccountInput,
@@ -13,12 +13,12 @@ import {
     searchJournalEntriesInput,
     getLedgerInput,
     closePeriodInput,
-} from '../validation/schemas.js';
-import * as Accounts from '../services/accounts.js';
-import * as Journal from '../services/journal.js';
-import * as Reports from '../services/reports.js';
-import { assertNotLocked, setPeriodLock } from '../services/periodLock.js';
-import type { ActionResult } from '../types/index.js';
+} from '../validation/schemas';
+import * as Accounts from '../services/accounts';
+import * as Journal from '../services/journal';
+import * as Reports from '../services/reports';
+import { assertNotLocked, setPeriodLock } from '../services/periodLock';
+import type { ActionResult } from '../types/index';
 import type {
     CreateAccountInput,
     UpdateAccountInput,
@@ -26,7 +26,7 @@ import type {
     CreateJournalEntryInput,
     SearchJournalEntriesInput,
     GetLedgerInput,
-} from '../validation/schemas.js';
+} from '../validation/schemas';
 
 export interface LojikCredentials {
     databaseFileName: string;

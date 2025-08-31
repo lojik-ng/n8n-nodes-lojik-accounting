@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import sqlite3 from 'sqlite3';
 const { verbose } = sqlite3;
 type Database = sqlite3.Database;
@@ -17,8 +16,7 @@ function resolveDatabasePath(config: DatabaseConfig): string {
     if (override && override.trim().length > 0) {
         return override;
     }
-    const __filename = fileURLToPath(import.meta.url);
-    const toolRoot = path.resolve(path.dirname(__filename), '../..');
+    const toolRoot = path.resolve(__dirname, '../..');
     return path.join(toolRoot, config.databaseFileName);
 }
 

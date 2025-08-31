@@ -6,8 +6,8 @@ import {
     NodeOperationError,
 } from 'n8n-workflow';
 
-import { LojikAccountingTool } from '../../tool/tool.js';
-import type { LojikCredentials } from '../../tool/tool.js';
+import { LojikAccountingTool } from '../../tool/tool';
+import type { LojikCredentials } from '../../tool/tool';
 
 export class LojikAccounting implements INodeType {
     description: INodeTypeDescription = {
