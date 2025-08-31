@@ -40,4 +40,5 @@ export const toolDefinition = {
         };
     },
 };
+export default toolDefinition;
 //# sourceMappingURL=registration.js.map

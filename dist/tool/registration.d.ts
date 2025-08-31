@@ -62,3 +62,4 @@ export declare const toolDefinition: {
     };
 };
 export type LojikAccountingActions = ReturnType<typeof toolDefinition.create>;
+export default toolDefinition;
