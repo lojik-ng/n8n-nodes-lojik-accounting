@@ -1,6 +1,6 @@
 {
     "name": "n8n-nodes-lojik-accounting",
-    "version": "0.1.20",
+    "version": "0.1.19",
     "description": "A comprehensive accounting tool for n8n as a Community Tool",
     "type": "module",
     "main": "dist/index.js",

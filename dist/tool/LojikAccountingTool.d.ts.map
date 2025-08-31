@@ -1,0 +1,1 @@
+{"version":3,"file":"LojikAccountingTool.d.ts","sourceRoot":"","sources":["../../src/tool/LojikAccountingTool.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAER,iBAAiB,EACjB,kBAAkB,EAClB,SAAS,EACT,oBAAoB,EACvB,MAAM,cAAc,CAAC;AA6KtB,qBAAa,mBAAoB,YAAW,SAAS;IACjD,WAAW,EAAE,oBAAoB,CAyc/B;IAEI,OAAO,CAAC,IAAI,EAAE,iBAAiB,GAAG,OAAO,CAAC,kBAAkB,EAAE,EAAE,CAAC;CAsF1E"}
