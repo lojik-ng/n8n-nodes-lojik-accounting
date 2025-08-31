@@ -2,9 +2,9 @@
 
 npm run clean
 npm run lint
+npm version patch
 npm test
 rm -f tmp-*.sqlite* ignored.sqlite
-# npm version patch
 npm run build
 git push
 git push --tags
