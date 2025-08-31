@@ -18,12 +18,16 @@
   "module": "./dist/index.js",
   "exports": "./dist/index.js",
   "n8n": {
-    "tools": [
-      "dist/tool/registration.js"
+    "nodes": [
+      "dist/nodes/LojikAccounting/LojikAccounting.node.js"
+    ],
+    "credentials": [
+      "dist/credentials/LojikAccounting.credentials.js"
     ]
   },
   "dependencies": {
     "luxon": "^3.7.1",
+    "n8n-workflow": "^1.0.0",
     "sqlite3": "^5.1.7",
     "zod": "^4.1.5"
   },
