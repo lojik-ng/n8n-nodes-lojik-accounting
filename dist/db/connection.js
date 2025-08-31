@@ -1,0 +1,137 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sqlite3 from 'sqlite3';
+const { verbose } = sqlite3;
+import { DateTime } from 'luxon';
+// Single shared connection
+let dbInstance = null;
+function resolveDatabasePath(config) {
+    const override = process.env.DATABASE_FILE;
+    if (override && override.trim().length > 0) {
+        return override;
+    }
+    const __filename = fileURLToPath(import.meta.url);
+    const toolRoot = path.resolve(path.dirname(__filename), '../..');
+    return path.join(toolRoot, config.databaseFileName);
+}
+function runPragma(db, sql) {
+    return new Promise((resolve, reject) => {
+        db.exec(sql, (err) => {
+            if (err)
+                reject(err);
+            else
+                resolve();
+        });
+    });
+}
+async function initializeSchema(db) {
+    const schemaSql = `
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('Asset','Liability','Equity','Income','Expense')),
+  parent_id INTEGER NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(parent_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  description TEXT,
+  reference TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS journal_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  journal_entry_id INTEGER NOT NULL,
+  account_id INTEGER NOT NULL,
+  debit NUMERIC DEFAULT 0,
+  credit NUMERIC DEFAULT 0,
+  FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS period_locks (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  through_date TEXT NOT NULL
+);
+`;
+    await new Promise((resolve, reject) => {
+        db.exec(schemaSql, (err) => (err ? reject(err) : resolve()));
+    });
+}
+export function getDb(config) {
+    if (dbInstance)
+        return Promise.resolve(dbInstance);
+    verbose();
+    const dbPath = resolveDatabasePath(config);
+    return new Promise((resolve, reject) => {
+        const db = new sqlite3.Database(dbPath, async (openErr) => {
+            if (openErr)
+                return reject(openErr);
+            try {
+                await runPragma(db, 'PRAGMA foreign_keys = ON;');
+                await runPragma(db, "PRAGMA journal_mode = WAL;");
+                await runPragma(db, 'PRAGMA busy_timeout = 10000;');
+                await initializeSchema(db);
+                dbInstance = db;
+                resolve(db);
+            }
+            catch (e) {
+                reject(e);
+            }
+        });
+    });
+}
+export async function withTransaction(db, executor) {
+    await execAsync(db, 'BEGIN');
+    try {
+        const result = await executor();
+        await execAsync(db, 'COMMIT');
+        return result;
+    }
+    catch (err) {
+        try {
+            await execAsync(db, 'ROLLBACK');
+        }
+        catch {
+            // ignore rollback errors
+        }
+        throw err;
+    }
+}
+export function execAsync(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.run(sql, params ?? [], function (err) {
+            if (err)
+                reject(err);
+            else
+                resolve();
+        });
+    });
+}
+export function getAsync(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params ?? [], (err, row) => {
+            if (err)
+                reject(err);
+            else
+                resolve(row);
+        });
+    });
+}
+export function allAsync(db, sql, params) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params ?? [], (err, rows) => {
+            if (err)
+                reject(err);
+            else
+                resolve(rows ?? []);
+        });
+    });
+}
+export function nowIsoUtc() {
+    return DateTime.now().toUTC().toISO();
+}
+//# sourceMappingURL=connection.js.map
