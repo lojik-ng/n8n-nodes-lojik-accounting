@@ -1,11 +1,11 @@
 # Lojik Accounting
 
-I want an n8n **Community Tool** (the kind that shows up under “AI Agent → Tools”, like *Code*, *Math*, *Browser*).
-This must follow the **n8n Community Tool specification** (not the Node/Express node spec).
+I want an n8n **Community Tool** (the kind that shows up under “AI Agent → Tools”, like *Code*).
+This must follow the **n8n Community Tool specification**.
 
 ## n8n-nodes-lojik-accounting
 
-Build a comprehensive accounting tool as an n8n Community Tool. The tool exposes actions the AI Agent can call to manage accounts, post journal entries, and generate reports.
+Build a comprehensive accounting tool as an n8n Community Tool. The tool exposes actions that the AI Agent can call to manage accounts, post journal entries, and generate reports.
 
 Use SQLite3 as the datastore. The database file name is configured via n8n credentials and the database file resides inside the tool package. If the file does not exist, it must be created on first run.
 
