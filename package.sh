@@ -1,6 +1,6 @@
 #!/bin/bash
 
-npm run clean
+rm -rf dist
 git push
 npm version patch
 npm run build

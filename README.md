@@ -1,114 +1,365 @@
-# n8n-nodes-lojik-accounting
+# Lojik Accounting - n8n Community Tool
 
-Lojik Accounting is an n8n Community Tool that provides accounting actions backed by SQLite3. It exposes actions the AI Agent can call to manage accounts, post balanced journal entries, and generate core accounting reports.
+A comprehensive accounting tool for n8n that provides double-entry bookkeeping functionality through an AI Agent-accessible Community Tool. Built with TypeScript, SQLite3, and designed for seamless integration with n8n workflows.
 
-- Datastore: SQLite3 file inside the tool package (overridable via env `DATABASE_FILE`).
-- Dates: Luxon only. Journal `date` stored as `YYYY-MM-DD`; timestamps are ISO strings (UTC).
-- Safety: Prepared statements for all inputs; transactions for multi-write operations.
-- Result envelope: `{ success: true, data }` or `{ success: false, message, details? }`.
+## Features
 
-## Install
+### 🧾 Account Management
+- Create, update, and delete accounts
+- Chart of accounts with hierarchical structure (parent-child relationships)
+- Five account types: Asset, Liability, Equity, Income, Expense
+- Account code uniqueness enforcement
+
+### 💰 Journal Entry Management
+- Create balanced journal entries with multiple lines
+- Automatic debit/credit validation (must balance)
+- Journal entry deletion with cascade to lines
+- Search entries by date range, reference, or description
+
+### 📊 Financial Reporting
+- **Trial Balance**: Summary of all account balances
+- **Ledger**: Detailed transaction history for specific accounts
+- **Balance Sheet**: Assets, Liabilities, and Equity snapshot
+- **Profit & Loss**: Income and Expense analysis for date ranges
+
+### ⚙️ Period Management
+- Close accounting periods to prevent modifications
+- Lock entries up to a specific date
+- Period-based controls for data integrity
+
+## Installation
 
 ```bash
-npm i n8n-nodes-lojik-accounting
+npm install n8n-nodes-lojik-accounting
 ```
 
-## n8n Credentials ("Lojik Accounting")
-- `databaseFileName` (required): SQLite file name stored at the tool root (unless overridden).
-- `displayDateFormat` (optional): Luxon format string. Default: `yyyy-LL-dd`.
-- `currencySymbol` (optional): Default: `₦`.
-- `timezone` (optional, IANA): Default: `UTC+1`.
+## n8n Setup
 
-Env override for local dev/tests:
-- `DATABASE_FILE`: Absolute or relative path to a database file. Takes precedence when set.
+### 1. Install the Package
+Add the package to your n8n installation or use it as a community node.
 
-## Actions
+### 2. Configure Credentials
+Create a new credential in n8n with the following settings:
 
-### Accounts
-- `createAccount` → `{ code, name, type, parentId? }`
-- `updateAccount` → `{ id, code?, name?, type?, parentId? }`
-- `getAccountById` → `{ id }`
-- `listAccounts` → `{ code?, name?, type? }`
-- `deleteAccount` → `{ id }` (rejects when any descendant has journal lines)
+**Credential Type**: Lojik Accounting
 
-### Journal
-- `createJournalEntry` → `{ date, description?, reference?, lines: [{ accountId, debit? , credit? }] }`
-  - Validations: at least two lines; sum(debit) == sum(credit) > 0; debit/credit positive; per-line either debit or credit (not both/neither)
-- `deleteJournalEntry` → `{ id }`
-- `getJournalEntryById` → `{ id }`
-- `searchJournalEntries` → `{ startDate?, endDate?, reference?, description? }`
+**Required Fields**:
+- **Database File Name**: `accounting.db` (filename for SQLite database)
 
-### Reporting
-- `getTrialBalance` → totals per account: `{ totalDebit, totalCredit, net }`
-- `getLedger` → account lines with optional running balance, date range filters
-- `getBalanceSheet` → Assets, Liabilities, Equity; includes per-parent-account subtotals
-- `getProfitLoss` → Income and Expenses with optional date filters
+**Optional Fields**:
+- **Display Date Format**: `yyyy-LL-dd` (Luxon format string)
+- **Currency Symbol**: `₦` (symbol for currency display)
+- **Timezone**: `UTC+1` (IANA timezone identifier)
 
-### Utility
-- `getJournalEntryDetails` → alias of `getJournalEntryById`
-- `closePeriod` → `{ throughDate }` (rejects future writes on or before this date)
-- `getSettings` → returns resolved display settings (date format, currency symbol, timezone)
+### 3. Database Location
+The SQLite database file will be created in the tool package directory using the configured filename. For development/testing, you can override the location by setting the `DATABASE_FILE` environment variable to an absolute path.
 
-## Date & Currency Notes
-- Luxon is used for all parsing/formatting. Journal dates are plain `YYYY-MM-DD` strings.
-- Currency is treated as numbers with two-decimal rounding only at journal entry boundary.
-- Display preferences are read from credentials; defaults applied when omitted.
+## Available Actions
 
-## Database Location
-- Default: database file lives at the tool package root using `databaseFileName` from credentials.
-- Override: set `DATABASE_FILE` (absolute path allowed). The override takes precedence.
+### Account Management
 
-## Development
-- ESM (package `type: module`), strict TypeScript, raw SQL with prepared statements.
-- Build: `npm run build`
-- Lint: `npm run lint`
-- Test: `npm test` (coverage thresholds ≥ 80%)
+#### Create Account
+Add a new account to the chart of accounts.
 
-## Schema (SQLite3)
+**Input**:
+```json
+{
+  "code": "CASH001",
+  "name": "Cash in Hand",
+  "type": "Asset",
+  "parentId": 1
+}
+```
+
+**Output**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "code": "CASH001",
+    "name": "Cash in Hand",
+    "type": "Asset",
+    "parentId": null,
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+#### Update Account
+Modify an existing account's properties.
+
+#### Get Account by ID
+Retrieve a specific account by its ID.
+
+#### List Accounts
+Get all accounts with optional filtering by code, name, or type.
+
+#### Delete Account
+Remove an account and all its descendants (if no journal entries exist).
+
+### Journal Entry Management
+
+#### Create Journal Entry
+Create a new journal entry with balanced debit/credit lines.
+
+**Input**:
+```json
+{
+  "date": "2024-01-15",
+  "description": "Cash sale to customer",
+  "reference": "INV001",
+  "lines": [
+    {
+      "accountId": 1,
+      "debit": 1000
+    },
+    {
+      "accountId": 2,
+      "credit": 1000
+    }
+  ]
+}
+```
+
+**Validation Rules**:
+- At least 2 lines required
+- Sum of debits must equal sum of credits
+- Each line must have either debit OR credit (not both, not neither)
+- All amounts must be non-negative
+- All referenced accounts must exist
+
+#### Delete Journal Entry
+Remove a journal entry and all its lines.
+
+#### Get Journal Entry by ID
+Retrieve a journal entry with all its lines.
+
+#### Search Journal Entries
+Find entries by date range, reference, or description.
+
+### Financial Reporting
+
+#### Get Trial Balance
+Generate a trial balance showing total debits, credits, and net balance for each account.
+
+**Output**:
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "accountId": 1,
+        "accountCode": "CASH001",
+        "accountName": "Cash in Hand",
+        "accountType": "Asset",
+        "totalDebit": 1000,
+        "totalCredit": 0,
+        "net": 1000
+      }
+    ],
+    "totalDebits": 1000,
+    "totalCredits": 1000,
+    "difference": 0
+  }
+}
+```
+
+#### Get Ledger
+Generate a detailed transaction history for a specific account.
+
+#### Get Balance Sheet
+Generate a balance sheet showing Assets, Liabilities, and Equity.
+
+#### Get Profit & Loss
+Generate an income statement for a specified date range.
+
+### Utility Functions
+
+#### Close Period
+Lock all entries through a specific date to prevent further modifications.
+
+## Date Handling
+
+All dates use **Luxon** for parsing and formatting:
+- Journal entry dates: `YYYY-MM-DD` format (ISO date)
+- Timestamps: ISO-8601 format with timezone
+- Validation rejects invalid dates
+
+## Error Handling
+
+All actions return a consistent result envelope:
+
+**Success**:
+```json
+{
+  "success": true,
+  "data": { ... }
+}
+```
+
+**Error**:
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "details": { ... }
+}
+```
+
+## Database Schema
+
+The tool uses SQLite3 with the following core tables:
 
 ```sql
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS accounts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  code TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  type TEXT NOT NULL CHECK (type IN ('Asset', 'Liability', 'Equity', 'Income', 'Expense')),
-  parent_id INTEGER NULL,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(parent_id) REFERENCES accounts(id) ON DELETE CASCADE
+-- Chart of accounts
+CREATE TABLE accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT CHECK (type IN ('Asset', 'Liability', 'Equity', 'Income', 'Expense')),
+    parent_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS journal_entries (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  date TEXT NOT NULL,
-  description TEXT,
-  reference TEXT,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+-- Journal entries (header)
+CREATE TABLE journal_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,  -- YYYY-MM-DD format
+    description TEXT,
+    reference TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS journal_lines (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  journal_entry_id INTEGER NOT NULL,
-  account_id INTEGER NOT NULL,
-  debit NUMERIC DEFAULT 0,
-  credit NUMERIC DEFAULT 0,
-  FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT
+-- Journal lines (details)
+CREATE TABLE journal_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE RESTRICT,
+    debit NUMERIC DEFAULT 0,
+    credit NUMERIC DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS period_locks (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  through_date TEXT NOT NULL
+-- Period locks
+CREATE TABLE period_locks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    through_date TEXT NOT NULL,  -- YYYY-MM-DD format
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-## Error Envelope
+## Development
 
-```json
-{ "success": true, "data": any }
+### Prerequisites
+- Node.js 18+ 
+- TypeScript
+- SQLite3
+
+### Setup
+```bash
+# Clone the repository
+git clone <repository-url>
+cd n8n-nodes-lojik-accounting
+
+# Install dependencies
+npm install
+
+# Build the project
+npm run build
+
+# Run tests
+npm test
+
+# Run with coverage
+npm run test:coverage
 ```
 
-```json
-{ "success": false, "message": "string", "details": any }
+### Testing
+The project includes comprehensive unit and integration tests:
+
+- **Unit Tests**: Service layer functions and validation schemas
+- **Integration Tests**: Full action workflows with in-memory SQLite
+- **Coverage**: 80%+ target for lines, functions, branches, and statements
+
+```bash
+# Run all tests
+npm test
+
+# Watch mode for development
+npm run test:watch
+
+# Coverage report
+npm run test:coverage
 ```
+
+### Environment Variables
+
+**For Development/Testing**:
+- `DATABASE_FILE`: Override database location (absolute path allowed)
+
+## Architecture
+
+```
+src/
+├── tool/                 # n8n Community Tool implementation
+│   ├── LojikAccountingTool.ts
+│   └── LojikAccountingApi.credentials.ts
+├── services/             # Business logic
+│   ├── accountService.ts
+│   ├── journalService.ts
+│   └── reportingService.ts
+├── db/                   # Database connection and setup
+│   └── connection.ts
+├── types/                # TypeScript interfaces
+│   └── index.ts
+├── validation/           # Zod schemas
+│   └── schemas.ts
+└── index.ts              # Package exports
+```
+
+## Technology Stack
+
+- **Runtime**: Node.js 18+ with ECMAScript Modules (ESM)
+- **Language**: TypeScript (strict mode)
+- **Database**: SQLite3 with WAL mode and foreign key constraints
+- **Validation**: Zod for input/output validation
+- **Date/Time**: Luxon for all date operations
+- **Testing**: Jest with ts-jest
+- **Build**: TypeScript compiler (tsc)
+
+## Best Practices
+
+### Database Operations
+- All SQL uses prepared statements for security
+- Transactions wrap multi-write operations
+- Foreign key constraints enforced
+- WAL mode for better concurrency
+
+### Type Safety
+- Strict TypeScript configuration
+- Explicit types for all public APIs
+- Zod validation for runtime type checking
+- No `any` types in production code
+
+### Error Handling
+- Consistent error envelope format
+- Validation errors include helpful messages
+- Database errors are caught and mapped
+- No sensitive information in error details
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Write tests for your changes
+4. Ensure all tests pass and coverage remains high
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Support
+
+For issues, questions, or contributions, please visit the [GitHub repository](https://github.com/lojik/n8n-nodes-lojik-accounting).
