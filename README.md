@@ -322,7 +322,7 @@ src/
 
 - **Runtime**: Node.js 18+ with ECMAScript Modules (ESM)
 - **Language**: TypeScript (strict mode)
-- **Database**: SQLite3 with WAL mode and foreign key constraints
+- **Database**: SQLite3 with better-sqlite3, WAL mode and foreign key constraints
 - **Validation**: Zod for input/output validation
 - **Date/Time**: Luxon for all date operations
 - **Testing**: Jest with ts-jest

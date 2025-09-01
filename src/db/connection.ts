@@ -1,4 +1,4 @@
-import sqlite3 from 'sqlite3';
+import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -7,7 +7,7 @@ import type { DatabaseConfig, LojikAccountingCredentials } from '../types/index.
 // Use process.cwd() as package root (simpler for both runtime and tests)
 const packageRoot = process.cwd();
 
-let dbConnection: sqlite3.Database | null = null;
+let dbConnection: Database.Database | null = null;
 let isInitialized = false;
 
 /**
@@ -68,64 +68,53 @@ function resolveDatabasePath(credentials: LojikAccountingCredentials): string {
 /**
  * Initialize SQLite3 database with proper settings
  */
-function initializeDatabase(db: sqlite3.Database): Promise<void> {
-    return new Promise((resolve, reject) => {
-        db.serialize(() => {
-            // Set required pragmas
-            db.run('PRAGMA foreign_keys = ON;');
-            db.run('PRAGMA journal_mode = WAL;');
-            db.run('PRAGMA busy_timeout = 10000;');
+function initializeDatabase(db: Database.Database): void {
+    // Set required pragmas
+    db.pragma('foreign_keys = ON');
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 10000');
 
-            // Create schema
-            db.exec(SCHEMA_SQL, (err) => {
-                if (err) {
-                    reject(new Error(`Failed to initialize database schema: ${err.message}`));
-                } else {
-                    resolve();
-                }
-            });
-        });
-    });
+    // Create schema
+    db.exec(SCHEMA_SQL);
 }
 
 /**
  * Initialize the database connection
  */
-export async function initializeDatabaseConnection(config: DatabaseConfig): Promise<void> {
-    if (isInitialized && dbConnection) {
-        return;
-    }
-
-    const dbPath = resolveDatabasePath(config.credentials);
-
-    // Ensure the directory exists
-    const dbDir = dirname(dbPath);
-    if (!existsSync(dbDir)) {
-        mkdirSync(dbDir, { recursive: true });
-    }
-
+export function initializeDatabaseConnection(config: DatabaseConfig): Promise<void> {
     return new Promise((resolve, reject) => {
-        dbConnection = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, async (err) => {
-            if (err) {
-                reject(new Error(`Failed to open database: ${err.message}`));
+        try {
+            if (isInitialized && dbConnection) {
+                resolve();
                 return;
             }
 
-            try {
-                await initializeDatabase(dbConnection!);
-                isInitialized = true;
-                resolve();
-            } catch (initErr) {
-                reject(initErr);
+            const dbPath = resolveDatabasePath(config.credentials);
+
+            // Ensure the directory exists
+            const dbDir = dirname(dbPath);
+            if (!existsSync(dbDir)) {
+                mkdirSync(dbDir, { recursive: true });
             }
-        });
+
+            // Create database connection
+            dbConnection = new Database(dbPath);
+
+            // Initialize database
+            initializeDatabase(dbConnection);
+            isInitialized = true;
+
+            resolve();
+        } catch (error) {
+            reject(new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
     });
 }
 
 /**
  * Get the database connection instance
  */
-export function getDatabaseConnection(): sqlite3.Database {
+export function getDatabaseConnection(): Database.Database {
     if (!dbConnection || !isInitialized) {
         throw new Error('Database connection not initialized. Call initializeDatabaseConnection first.');
     }
@@ -136,40 +125,34 @@ export function getDatabaseConnection(): sqlite3.Database {
  * Close the database connection and reset state
  */
 export function closeDatabaseConnection(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (!dbConnection) {
-            // Reset state even if no connection
-            dbConnection = null;
-            isInitialized = false;
-            resolve();
-            return;
+    return new Promise((resolve) => {
+        try {
+            if (dbConnection) {
+                dbConnection.close();
+            }
+        } catch (error) {
+            // Ignore close errors
         }
 
-        dbConnection.close((err) => {
-            if (err) {
-                reject(new Error(`Failed to close database: ${err.message}`));
-            } else {
-                dbConnection = null;
-                isInitialized = false;
-                resolve();
-            }
-        });
+        dbConnection = null;
+        isInitialized = false;
+        resolve();
     });
 }
 
 /**
  * Run a query with parameters (prepared statement)
  */
-export function runQuery(sql: string, params: unknown[] = []): Promise<sqlite3.RunResult> {
-    const db = getDatabaseConnection();
+export function runQuery(sql: string, params: unknown[] = []): Promise<Database.RunResult> {
     return new Promise((resolve, reject) => {
-        db.run(sql, params, function (err) {
-            if (err) {
-                reject(new Error(`Query failed: ${err.message}`));
-            } else {
-                resolve(this);
-            }
-        });
+        try {
+            const db = getDatabaseConnection();
+            const stmt = db.prepare(sql);
+            const result = stmt.run(...params);
+            resolve(result);
+        } catch (error) {
+            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
     });
 }
 
@@ -177,15 +160,15 @@ export function runQuery(sql: string, params: unknown[] = []): Promise<sqlite3.R
  * Get a single row from a query
  */
 export function getQuery<T = unknown>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-    const db = getDatabaseConnection();
     return new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => {
-            if (err) {
-                reject(new Error(`Query failed: ${err.message}`));
-            } else {
-                resolve(row as T | undefined);
-            }
-        });
+        try {
+            const db = getDatabaseConnection();
+            const stmt = db.prepare(sql);
+            const result = stmt.get(...params) as T | undefined;
+            resolve(result);
+        } catch (error) {
+            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
     });
 }
 
@@ -193,15 +176,15 @@ export function getQuery<T = unknown>(sql: string, params: unknown[] = []): Prom
  * Get all rows from a query
  */
 export function getAllQuery<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
-    const db = getDatabaseConnection();
     return new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
-            if (err) {
-                reject(new Error(`Query failed: ${err.message}`));
-            } else {
-                resolve(rows as T[]);
-            }
-        });
+        try {
+            const db = getDatabaseConnection();
+            const stmt = db.prepare(sql);
+            const result = stmt.all(...params) as T[];
+            resolve(result);
+        } catch (error) {
+            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
     });
 }
 
@@ -209,37 +192,20 @@ export function getAllQuery<T = unknown>(sql: string, params: unknown[] = []): P
  * Execute multiple statements in a transaction
  */
 export function runTransaction(operations: (() => Promise<unknown>)[]): Promise<void> {
-    const db = getDatabaseConnection();
-
-    return new Promise((resolve, reject) => {
-        db.serialize(async () => {
-            try {
-                await new Promise<void>((resolveBegin, rejectBegin) => {
-                    db.run('BEGIN TRANSACTION', (err) => {
-                        if (err) rejectBegin(err);
-                        else resolveBegin();
-                    });
-                });
-
-                // Execute all operations
-                for (const operation of operations) {
-                    await operation();
-                }
-
-                await new Promise<void>((resolveCommit, rejectCommit) => {
-                    db.run('COMMIT', (err) => {
-                        if (err) rejectCommit(err);
-                        else resolveCommit();
-                    });
-                });
-
-                resolve();
-            } catch (error) {
-                // Rollback on any error
-                db.run('ROLLBACK', () => {
-                    reject(error);
-                });
+    return new Promise(async (resolve, reject) => {
+        const db = getDatabaseConnection();
+        const transaction = db.transaction(async () => {
+            // Execute all operations
+            for (const operation of operations) {
+                await operation();
             }
         });
+
+        try {
+            transaction();
+            resolve();
+        } catch (error) {
+            reject(error);
+        }
     });
 }

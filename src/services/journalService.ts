@@ -111,7 +111,7 @@ export async function createJournalEntry(input: CreateJournalEntryInput): Promis
                     [input.date, input.description || null, input.reference || null]
                 );
 
-                const entryId = entryResult.lastID!;
+                const entryId = entryResult.lastInsertRowid;
 
                 // Fetch the created entry
                 const entryRow = await getQuery<any>(
@@ -129,7 +129,7 @@ export async function createJournalEntry(input: CreateJournalEntryInput): Promis
 
                     const lineRow = await getQuery<any>(
                         'SELECT * FROM journal_lines WHERE id = ?',
-                        [lineResult.lastID]
+                        [lineResult.lastInsertRowid]
                     );
                     createdLines.push(mapRowToJournalLine(lineRow!));
                 }

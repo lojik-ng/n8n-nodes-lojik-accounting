@@ -66,7 +66,7 @@ export async function createAccount(input: CreateAccountInput): Promise<ActionRe
         // Fetch the created account
         const createdAccount = await getQuery<any>(
             'SELECT * FROM accounts WHERE id = ?',
-            [result.lastID]
+            [result.lastInsertRowid]
         );
 
         if (!createdAccount) {

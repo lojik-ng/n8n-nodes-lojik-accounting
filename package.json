@@ -1,6 +1,6 @@
 {
     "name": "n8n-nodes-lojik-accounting",
-    "version": "0.1.20",
+    "version": "0.2.0",
     "description": "A comprehensive accounting tool for n8n as a Community Tool",
     "type": "module",
     "main": "dist/index.js",
@@ -13,7 +13,8 @@
         "test:coverage": "jest --coverage",
         "lint": "eslint src/**/*.ts",
         "lint:fix": "eslint src/**/*.ts --fix",
-        "format": "prettier --write src/**/*.ts"
+        "format": "prettier --write src/**/*.ts",
+        "prepack": "npm run build"
     },
     "keywords": [
         "n8n",
@@ -24,14 +25,14 @@
     "author": "Lojik Accounting",
     "license": "MIT",
     "dependencies": {
+        "better-sqlite3": "^9.2.2",
         "luxon": "^3.4.4",
-        "sqlite3": "^5.1.6",
         "zod": "^3.22.4"
     },
     "devDependencies": {
         "@types/luxon": "^3.3.7",
         "@types/node": "^20.10.5",
-        "@types/sqlite3": "^3.1.11",
+        "@types/better-sqlite3": "^7.6.8",
         "@types/jest": "^29.5.8",
         "@typescript-eslint/eslint-plugin": "^6.13.1",
         "@typescript-eslint/parser": "^6.13.1",
@@ -44,6 +45,14 @@
     "peerDependencies": {
         "n8n-workflow": ">=1.0.0"
     },
+    "engines": {
+        "node": ">=18.0.0"
+    },
+    "files": [
+        "dist/**/*",
+        "package.json",
+        "README.md"
+    ],
     "n8n": {
         "n8nNodesApiVersion": 1,
         "credentials": [
