@@ -1,0 +1,26 @@
+{
+  "preset": "ts-jest",
+  "testEnvironment": "node",
+  "extensionsToTreatAsEsm": [".ts"],
+  "moduleNameMapper": {
+    "^(\\.{1,2}/.*)\\.js$": "$1"
+  },
+  "transform": {
+    "^.+\\.tsx?$": [
+      "ts-jest",
+      {
+        "useESM": true,
+        "tsconfig": "tsconfig.test.json"
+      }
+    ]
+  },
+  "collectCoverageFrom": [
+    "src/**/*.{ts,tsx}",
+    "!src/index.ts",
+    "!src/tool/**/*"
+  ],
+  "testMatch": [
+    "<rootDir>/src/**/*.(spec|test).ts"
+  ],
+  "setupFilesAfterEnv": ["<rootDir>/jest.setup.ts"]
+}

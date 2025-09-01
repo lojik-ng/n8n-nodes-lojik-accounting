@@ -1,12 +1,4 @@
-import { LojikAccountingTool } from './tool/LojikAccountingTool';
-import { LojikAccountingApi } from './tool/LojikAccountingApi.credentials';
+import { LojikAccounting } from './tool/LojikAccounting.node.js';
 
-// Export main classes
-module.exports = {
-    LojikAccountingTool,
-    LojikAccountingApi,
-};
-
-// Also support named exports
-module.exports.LojikAccountingTool = LojikAccountingTool;
-module.exports.LojikAccountingApi = LojikAccountingApi;
+export default LojikAccounting;
+export { LojikAccounting };

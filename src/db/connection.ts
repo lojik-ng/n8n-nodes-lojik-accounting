@@ -1,211 +1,56 @@
-import Database = require('better-sqlite3');
+import sqlite3 from 'sqlite3';
+import { open } from 'sqlite';
+import path from 'path';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve, isAbsolute } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-import type { DatabaseConfig, LojikAccountingCredentials } from '../types/index';
+import { dirname } from 'path';
 
-// Use process.cwd() as package root (simpler for both runtime and tests)
-const packageRoot = process.cwd();
+// Get the directory name in ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-let dbConnection: Database.Database | null = null;
-let isInitialized = false;
+let db: Awaited<ReturnType<typeof open>> | null = null;
 
 /**
- * SQL schema for the accounting database
+ * Get the database file path
+ * @returns Absolute path to the database file
  */
-const SCHEMA_SQL = `
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS accounts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    code TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('Asset', 'Liability', 'Equity', 'Income', 'Expense')),
-    parent_id INTEGER NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(parent_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS journal_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    description TEXT,
-    reference TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS journal_lines (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    journal_entry_id INTEGER NOT NULL,
-    account_id INTEGER NOT NULL,
-    debit NUMERIC DEFAULT 0,
-    credit NUMERIC DEFAULT 0,
-    FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT
-);
-
-CREATE TABLE IF NOT EXISTS period_locks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    through_date TEXT NOT NULL,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
-);
-`;
-
-/**
- * Resolve the database file path based on credentials and environment
- */
-function resolveDatabasePath(credentials: LojikAccountingCredentials): string {
-    // Check for environment override first
-    const envOverride = process.env.DATABASE_FILE;
-    if (envOverride) {
-        return isAbsolute(envOverride) ? envOverride : resolve(process.cwd(), envOverride);
-    }
-
-    // Use credentials databaseFileName relative to package root
-    return join(packageRoot, credentials.databaseFileName);
+export function getDatabasePath(): string {
+  // Check for environment override first
+  if (process.env.DATABASE_FILE) {
+    return process.env.DATABASE_FILE;
+  }
+  
+  // Get database file name from n8n credentials (this would be set by the tool)
+  const databaseFileName = process.env.DATABASE_FILENAME || 'lojik-accounting.db';
+  
+  // Resolve path relative to the tool package root
+  return path.resolve(__dirname, '..', databaseFileName);
 }
 
 /**
- * Initialize SQLite3 database with proper settings
+ * Initialize and get the database connection
+ * @returns Database connection
  */
-function initializeDatabase(db: Database.Database): void {
-    // Set required pragmas
-    db.pragma('foreign_keys = ON');
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 10000');
-
-    // Create schema
-    db.exec(SCHEMA_SQL);
-}
-
-/**
- * Initialize the database connection
- */
-export function initializeDatabaseConnection(config: DatabaseConfig): Promise<void> {
-    return new Promise((resolve, reject) => {
-        try {
-            if (isInitialized && dbConnection) {
-                resolve();
-                return;
-            }
-
-            const dbPath = resolveDatabasePath(config.credentials);
-
-            // Ensure the directory exists
-            const dbDir = dirname(dbPath);
-            if (!existsSync(dbDir)) {
-                mkdirSync(dbDir, { recursive: true });
-            }
-
-            // Create database connection
-            dbConnection = new Database(dbPath);
-
-            // Initialize database
-            initializeDatabase(dbConnection);
-            isInitialized = true;
-
-            resolve();
-        } catch (error) {
-            reject(new Error(`Failed to initialize database: ${error instanceof Error ? error.message : 'Unknown error'}`));
-        }
-    });
-}
-
-/**
- * Get the database connection instance
- */
-export function getDatabaseConnection(): Database.Database {
-    if (!dbConnection || !isInitialized) {
-        throw new Error('Database connection not initialized. Call initializeDatabaseConnection first.');
-    }
-    return dbConnection;
-}
-
-/**
- * Close the database connection and reset state
- */
-export function closeDatabaseConnection(): Promise<void> {
-    return new Promise((resolve) => {
-        try {
-            if (dbConnection) {
-                dbConnection.close();
-            }
-        } catch (error) {
-            // Ignore close errors
-        }
-
-        dbConnection = null;
-        isInitialized = false;
-        resolve();
-    });
-}
-
-/**
- * Run a query with parameters (prepared statement)
- */
-export function runQuery(sql: string, params: unknown[] = []): Promise<Database.RunResult> {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = getDatabaseConnection();
-            const stmt = db.prepare(sql);
-            const result = stmt.run(...params);
-            resolve(result);
-        } catch (error) {
-            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
-        }
-    });
-}
-
-/**
- * Get a single row from a query
- */
-export function getQuery<T = unknown>(sql: string, params: unknown[] = []): Promise<T | undefined> {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = getDatabaseConnection();
-            const stmt = db.prepare(sql);
-            const result = stmt.get(...params) as T | undefined;
-            resolve(result);
-        } catch (error) {
-            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
-        }
-    });
-}
-
-/**
- * Get all rows from a query
- */
-export function getAllQuery<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
-    return new Promise((resolve, reject) => {
-        try {
-            const db = getDatabaseConnection();
-            const stmt = db.prepare(sql);
-            const result = stmt.all(...params) as T[];
-            resolve(result);
-        } catch (error) {
-            reject(new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
-        }
-    });
-}
-
-/**
- * Execute multiple statements in a transaction
- */
-export function runTransaction(operations: (() => Promise<unknown>)[]): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        const db = getDatabaseConnection();
-        const transaction = db.transaction(async () => {
-            // Execute all operations
-            for (const operation of operations) {
-                await operation();
-            }
-        });
-
-        try {
-            transaction();
-            resolve();
-        } catch (error) {
-            reject(error);
-        }
-    });
+export async function getDb() {
+  if (db) {
+    return db;
+  }
+  
+  const dbPath = getDatabasePath();
+  
+  db = await open({
+    filename: dbPath,
+    driver: sqlite3.Database
+  });
+  
+  // Enable foreign keys
+  await db.exec('PRAGMA foreign_keys = ON;');
+  
+  // Set WAL mode for better concurrency
+  await db.exec('PRAGMA journal_mode = WAL;');
+  
+  // Set busy timeout
+  await db.exec('PRAGMA busy_timeout = 10000;');
+  
+  return db;
 }

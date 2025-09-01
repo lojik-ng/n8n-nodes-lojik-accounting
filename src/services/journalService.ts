@@ -1,341 +1,175 @@
-import { DateTime } from 'luxon';
-import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection';
-import type { JournalEntry, JournalLine, JournalEntryWithLines, ActionResult } from '../types/index';
-import type {
-    CreateJournalEntryInput,
-    DeleteJournalEntryInput,
-    GetJournalEntryByIdInput,
-    SearchJournalEntriesInput,
-} from '../validation/schemas';
-
-/**
- * Map database row to JournalEntry interface
- */
-function mapRowToJournalEntry(row: any): JournalEntry {
-    return {
-        id: row.id,
-        date: row.date,
-        description: row.description,
-        reference: row.reference,
-        createdAt: row.created_at,
-    };
-}
-
-/**
- * Map database row to JournalLine interface
- */
-function mapRowToJournalLine(row: any): JournalLine {
-    return {
-        id: row.id,
-        journalEntryId: row.journal_entry_id,
-        accountId: row.account_id,
-        debit: Number(row.debit),
-        credit: Number(row.credit),
-    };
-}
-
-/**
- * Check if a date is locked by period closure
- */
-async function isDateLocked(date: string): Promise<boolean> {
-    const lock = await getQuery<{ through_date: string }>(
-        'SELECT through_date FROM period_locks ORDER BY through_date DESC LIMIT 1'
-    );
-
-    if (!lock) {
-        return false;
-    }
-
-    const entryDate = DateTime.fromISO(date, { zone: 'utc' });
-    const lockDate = DateTime.fromISO(lock.through_date, { zone: 'utc' });
-
-    return entryDate <= lockDate;
-}
-
-/**
- * Validate that all accounts exist
- */
-async function validateAccountsExist(accountIds: number[]): Promise<{ valid: boolean; missingIds: number[] }> {
-    const uniqueIds = [...new Set(accountIds)];
-    const placeholders = uniqueIds.map(() => '?').join(',');
-
-    const existingAccounts = await getAllQuery<{ id: number }>(
-        `SELECT id FROM accounts WHERE id IN (${placeholders})`,
-        uniqueIds
-    );
-
-    const existingIds = existingAccounts.map(acc => acc.id);
-    const missingIds = uniqueIds.filter(id => !existingIds.includes(id));
-
-    return {
-        valid: missingIds.length === 0,
-        missingIds,
-    };
-}
+import { JournalEntry, JournalLine } from '../types/index.js';
+import { getDb } from '../db/connection.js';
 
 /**
  * Create a journal entry with its lines
  */
-export async function createJournalEntry(input: CreateJournalEntryInput): Promise<ActionResult<JournalEntryWithLines>> {
-    try {
-        // Check if date is locked
-        const locked = await isDateLocked(input.date);
-        if (locked) {
-            return {
-                success: false,
-                message: 'Cannot create journal entry for a locked period',
-                details: { date: input.date },
-            };
-        }
-
-        // Validate that all referenced accounts exist
-        const accountIds = input.lines.map(line => line.accountId);
-        const accountValidation = await validateAccountsExist(accountIds);
-
-        if (!accountValidation.valid) {
-            return {
-                success: false,
-                message: 'One or more accounts do not exist',
-                details: { missingAccountIds: accountValidation.missingIds },
-            };
-        }
-
-        let createdEntry: JournalEntry;
-        let createdLines: JournalLine[] = [];
-
-        await runTransaction([
-            async () => {
-                // Create the journal entry
-                const entryResult = await runQuery(
-                    'INSERT INTO journal_entries (date, description, reference) VALUES (?, ?, ?)',
-                    [input.date, input.description || null, input.reference || null]
-                );
-
-                const entryId = entryResult.lastInsertRowid;
-
-                // Fetch the created entry
-                const entryRow = await getQuery<any>(
-                    'SELECT * FROM journal_entries WHERE id = ?',
-                    [entryId]
-                );
-                createdEntry = mapRowToJournalEntry(entryRow!);
-
-                // Create journal lines
-                for (const line of input.lines) {
-                    const lineResult = await runQuery(
-                        'INSERT INTO journal_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)',
-                        [entryId, line.accountId, line.debit || 0, line.credit || 0]
-                    );
-
-                    const lineRow = await getQuery<any>(
-                        'SELECT * FROM journal_lines WHERE id = ?',
-                        [lineResult.lastInsertRowid]
-                    );
-                    createdLines.push(mapRowToJournalLine(lineRow!));
-                }
-            }
-        ]);
-
-        return {
-            success: true,
-            data: {
-                entry: createdEntry!,
-                lines: createdLines,
-            },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to create journal entry',
-            details: error instanceof Error ? error.message : error,
-        };
+export async function createJournalEntry(
+  date: string,
+  lines: Array<{ accountId: number; debit?: number; credit?: number }>,
+  description: string | null = null,
+  reference: string | null = null
+): Promise<{ entry: JournalEntry; lines: JournalLine[] }> {
+  const db = await getDb();
+  
+  // Validate that we have at least 2 lines
+  if (lines.length < 2) {
+    throw new Error('Journal entry must have at least 2 lines');
+  }
+  
+  // Validate that total debits equal total credits and are greater than zero
+  const totalDebit = lines.reduce((sum, line) => sum + (line.debit || 0), 0);
+  const totalCredit = lines.reduce((sum, line) => sum + (line.credit || 0), 0);
+  
+  if (totalDebit !== totalCredit) {
+    throw new Error('Total debits must equal total credits');
+  }
+  
+  if (totalDebit === 0) {
+    throw new Error('Total debits and credits must be greater than zero');
+  }
+  
+  // Validate that each line has either debit or credit but not both
+  for (const line of lines) {
+    const hasDebit = line.debit !== undefined && line.debit > 0;
+    const hasCredit = line.credit !== undefined && line.credit > 0;
+    
+    if (!(hasDebit || hasCredit) || (hasDebit && hasCredit)) {
+      throw new Error('Each line must have either a debit or credit amount, but not both');
     }
+  }
+  
+  // Check if all account IDs exist
+  for (const line of lines) {
+    const accountExists = await db.get('SELECT id FROM accounts WHERE id = ?', line.accountId);
+    if (!accountExists) {
+      throw new Error(`Account with id ${line.accountId} does not exist`);
+    }
+  }
+  
+  // Create journal entry
+  // Insert journal entry
+  const entryResult = await db.run(
+    'INSERT INTO journal_entries (date, description, reference) VALUES (?, ?, ?)',
+    [date, description, reference]
+  );
+  
+  const entryId = entryResult.lastID;
+  if (!entryId) {
+    throw new Error('Failed to create journal entry');
+  }
+  
+  // Insert journal lines
+  const insertedLines: JournalLine[] = [];
+  for (const line of lines) {
+    const lineResult = await db.run(
+      'INSERT INTO journal_lines (journal_entry_id, account_id, debit, credit) VALUES (?, ?, ?, ?)',
+      [entryId, line.accountId, line.debit || 0, line.credit || 0]
+    );
+    
+    const lineId = lineResult.lastID;
+    if (!lineId) {
+      throw new Error('Failed to create journal line');
+    }
+    
+    insertedLines.push({
+      id: lineId,
+      journalEntryId: entryId,
+      accountId: line.accountId,
+      debit: line.debit || 0,
+      credit: line.credit || 0
+    });
+  }
+  
+  // Return the created entry and lines
+  const entry: JournalEntry = {
+    id: entryId,
+    date,
+    description,
+    reference,
+    createdAt: new Date().toISOString()
+  };
+  
+  return { entry, lines: insertedLines };
 }
 
 /**
- * Delete a journal entry and all its lines
+ * Delete a journal entry
  */
-export async function deleteJournalEntry(input: DeleteJournalEntryInput): Promise<ActionResult<{ deleted: true }>> {
-    try {
-        // Check if journal entry exists and get its date
-        const existingEntry = await getQuery<{ id: number; date: string }>(
-            'SELECT id, date FROM journal_entries WHERE id = ?',
-            [input.id]
-        );
-
-        if (!existingEntry) {
-            return {
-                success: false,
-                message: 'Journal entry not found',
-                details: { id: input.id },
-            };
-        }
-
-        // Check if date is locked
-        const locked = await isDateLocked(existingEntry.date);
-        if (locked) {
-            return {
-                success: false,
-                message: 'Cannot delete journal entry for a locked period',
-                details: { date: existingEntry.date },
-            };
-        }
-
-        // Delete the journal entry (lines will cascade)
-        await runTransaction([
-            async () => {
-                await runQuery('DELETE FROM journal_entries WHERE id = ?', [input.id]);
-            }
-        ]);
-
-        return {
-            success: true,
-            data: { deleted: true },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to delete journal entry',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function deleteJournalEntry(id: number): Promise<boolean> {
+  const db = await getDb();
+  
+  // Check if journal entry exists
+  const existingEntry = await db.get('SELECT id FROM journal_entries WHERE id = ?', id);
+  if (!existingEntry) {
+    throw new Error(`Journal entry with id ${id} does not exist`);
+  }
+  
+  // Delete the journal entry (lines will be deleted automatically due to foreign key cascade)
+  await db.run('DELETE FROM journal_entries WHERE id = ?', id);
+  
+  return true;
 }
 
 /**
  * Get journal entry by ID with its lines
  */
-export async function getJournalEntryById(input: GetJournalEntryByIdInput): Promise<ActionResult<JournalEntryWithLines>> {
-    try {
-        // Get the journal entry
-        const entryRow = await getQuery<any>(
-            'SELECT * FROM journal_entries WHERE id = ?',
-            [input.id]
-        );
-
-        if (!entryRow) {
-            return {
-                success: false,
-                message: 'Journal entry not found',
-                details: { id: input.id },
-            };
-        }
-
-        // Get the journal lines
-        const lineRows = await getAllQuery<any>(
-            'SELECT * FROM journal_lines WHERE journal_entry_id = ? ORDER BY id',
-            [input.id]
-        );
-
-        return {
-            success: true,
-            data: {
-                entry: mapRowToJournalEntry(entryRow),
-                lines: lineRows.map(mapRowToJournalLine),
-            },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to retrieve journal entry',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function getJournalEntryById(id: number): Promise<{ entry: JournalEntry; lines: JournalLine[] } | null> {
+  const db = await getDb();
+  
+  // Get the journal entry
+  const entry = await db.get('SELECT * FROM journal_entries WHERE id = ?', id);
+  if (!entry) {
+    return null;
+  }
+  
+  // Get the journal lines
+  const lines = await db.all('SELECT * FROM journal_lines WHERE journal_entry_id = ? ORDER BY id', id);
+  
+  return {
+    entry: entry as JournalEntry,
+    lines: lines as JournalLine[]
+  };
 }
 
 /**
- * Search journal entries by criteria
+ * Search journal entries
  */
-export async function searchJournalEntries(input: SearchJournalEntriesInput): Promise<ActionResult<JournalEntry[]>> {
-    try {
-        let sql = 'SELECT * FROM journal_entries';
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (input.startDate) {
-            conditions.push('date >= ?');
-            params.push(input.startDate);
-        }
-
-        if (input.endDate) {
-            conditions.push('date <= ?');
-            params.push(input.endDate);
-        }
-
-        if (input.reference) {
-            conditions.push('reference LIKE ?');
-            params.push(`%${input.reference}%`);
-        }
-
-        if (input.description) {
-            conditions.push('description LIKE ?');
-            params.push(`%${input.description}%`);
-        }
-
-        if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
-        }
-
-        sql += ' ORDER BY date DESC, id DESC';
-
-        const entries = await getAllQuery<any>(sql, params);
-
-        return {
-            success: true,
-            data: entries.map(mapRowToJournalEntry),
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to search journal entries',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
-}
-
-/**
- * Close period through a specific date
- */
-export async function closePeriod(throughDate: string): Promise<ActionResult<{ locked: true }>> {
-    try {
-        // Validate date format
-        const dt = DateTime.fromISO(throughDate, { zone: 'utc' });
-        if (!dt.isValid) {
-            return {
-                success: false,
-                message: 'Invalid date format',
-                details: { throughDate },
-            };
-        }
-
-        // Check if there's already a lock for this or later date
-        const existingLock = await getQuery<{ through_date: string }>(
-            'SELECT through_date FROM period_locks WHERE through_date >= ? ORDER BY through_date DESC LIMIT 1',
-            [throughDate]
-        );
-
-        if (existingLock) {
-            return {
-                success: false,
-                message: 'Period already locked through this date or later',
-                details: { existingLockDate: existingLock.through_date },
-            };
-        }
-
-        // Create the period lock
-        await runQuery(
-            'INSERT INTO period_locks (through_date) VALUES (?)',
-            [throughDate]
-        );
-
-        return {
-            success: true,
-            data: { locked: true },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to close period',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function searchJournalEntries(
+  filter: {
+    startDate?: string;
+    endDate?: string;
+    reference?: string;
+    description?: string;
+  } = {}
+): Promise<JournalEntry[]> {
+  const db = await getDb();
+  
+  let query = 'SELECT * FROM journal_entries WHERE 1=1';
+  const params: any[] = [];
+  
+  if (filter.startDate) {
+    query += ' AND date >= ?';
+    params.push(filter.startDate);
+  }
+  
+  if (filter.endDate) {
+    query += ' AND date <= ?';
+    params.push(filter.endDate);
+  }
+  
+  if (filter.reference) {
+    query += ' AND reference LIKE ?';
+    params.push(`%${filter.reference}%`);
+  }
+  
+  if (filter.description) {
+    query += ' AND description LIKE ?';
+    params.push(`%${filter.description}%`);
+  }
+  
+  query += ' ORDER BY date DESC, id DESC';
+  
+  const entries = await db.all(query, params);
+  return entries as JournalEntry[];
 }

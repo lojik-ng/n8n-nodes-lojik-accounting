@@ -1,359 +1,233 @@
-import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection';
-import type { Account, ActionResult } from '../types/index';
-import type {
-    CreateAccountInput,
-    UpdateAccountInput,
-    GetAccountByIdInput,
-    ListAccountsInput,
-    DeleteAccountInput,
-} from '../validation/schemas';
-
-/**
- * Map database row to Account interface
- */
-function mapRowToAccount(row: any): Account {
-    return {
-        id: row.id,
-        code: row.code,
-        name: row.name,
-        type: row.type,
-        parentId: row.parent_id,
-        createdAt: row.created_at,
-    };
-}
+import { Account, AccountType } from '../types/index.js';
+import { getDb } from '../db/connection.js';
 
 /**
  * Create a new account
  */
-export async function createAccount(input: CreateAccountInput): Promise<ActionResult<Account>> {
-    try {
-        // Check if account code already exists
-        const existingAccount = await getQuery<{ id: number }>(
-            'SELECT id FROM accounts WHERE code = ?',
-            [input.code]
-        );
-
-        if (existingAccount) {
-            return {
-                success: false,
-                message: 'Account code already exists',
-                details: { code: input.code },
-            };
-        }
-
-        // Check if parent exists (if specified)
-        if (input.parentId) {
-            const parentAccount = await getQuery<{ id: number }>(
-                'SELECT id FROM accounts WHERE id = ?',
-                [input.parentId]
-            );
-
-            if (!parentAccount) {
-                return {
-                    success: false,
-                    message: 'Parent account not found',
-                    details: { parentId: input.parentId },
-                };
-            }
-        }
-
-        // Create the account
-        const result = await runQuery(
-            'INSERT INTO accounts (code, name, type, parent_id) VALUES (?, ?, ?, ?)',
-            [input.code, input.name, input.type, input.parentId || null]
-        );
-
-        // Fetch the created account
-        const createdAccount = await getQuery<any>(
-            'SELECT * FROM accounts WHERE id = ?',
-            [result.lastInsertRowid]
-        );
-
-        if (!createdAccount) {
-            return {
-                success: false,
-                message: 'Failed to retrieve created account',
-            };
-        }
-
-        return {
-            success: true,
-            data: mapRowToAccount(createdAccount),
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to create account',
-            details: error instanceof Error ? error.message : error,
-        };
+export async function createAccount(
+  code: string,
+  name: string,
+  type: AccountType,
+  parentId: number | null = null
+): Promise<Account> {
+  const db = await getDb();
+  
+  // Check if parent account exists (if provided)
+  if (parentId !== null) {
+    const parentExists = await db.get('SELECT id FROM accounts WHERE id = ?', parentId);
+    if (!parentExists) {
+      throw new Error(`Parent account with id ${parentId} does not exist`);
     }
+  }
+  
+  // Check if account code is unique
+  const existingAccount = await db.get('SELECT id FROM accounts WHERE code = ?', code);
+  if (existingAccount) {
+    throw new Error(`Account with code ${code} already exists`);
+  }
+  
+  const result = await db.run(
+    `INSERT INTO accounts (code, name, type, parent_id) VALUES (?, ?, ?, ?)`,
+    [code, name, type, parentId]
+  );
+  
+  const accountId = result.lastID;
+  
+  if (!accountId) {
+    throw new Error('Failed to create account');
+  }
+  
+  const account = await db.get('SELECT * FROM accounts WHERE id = ?', accountId);
+  return account as Account;
 }
 
 /**
  * Update an existing account
  */
-export async function updateAccount(input: UpdateAccountInput): Promise<ActionResult<Account>> {
-    try {
-        // Check if account exists
-        const existingAccount = await getQuery<any>(
-            'SELECT * FROM accounts WHERE id = ?',
-            [input.id]
-        );
-
-        if (!existingAccount) {
-            return {
-                success: false,
-                message: 'Account not found',
-                details: { id: input.id },
-            };
-        }
-
-        // Check if new code conflicts (if code is being updated)
-        if (input.code && input.code !== existingAccount.code) {
-            const codeExists = await getQuery<{ id: number }>(
-                'SELECT id FROM accounts WHERE code = ? AND id != ?',
-                [input.code, input.id]
-            );
-
-            if (codeExists) {
-                return {
-                    success: false,
-                    message: 'Account code already exists',
-                    details: { code: input.code },
-                };
-            }
-        }
-
-        // Check if parent exists (if being updated)
-        if (input.parentId !== undefined && input.parentId !== null) {
-            const parentAccount = await getQuery<{ id: number }>(
-                'SELECT id FROM accounts WHERE id = ?',
-                [input.parentId]
-            );
-
-            if (!parentAccount) {
-                return {
-                    success: false,
-                    message: 'Parent account not found',
-                    details: { parentId: input.parentId },
-                };
-            }
-
-            // Prevent circular references
-            if (input.parentId === input.id) {
-                return {
-                    success: false,
-                    message: 'Account cannot be its own parent',
-                };
-            }
-        }
-
-        // Build update query dynamically
-        const updates: string[] = [];
-        const params: any[] = [];
-
-        if (input.code !== undefined) {
-            updates.push('code = ?');
-            params.push(input.code);
-        }
-        if (input.name !== undefined) {
-            updates.push('name = ?');
-            params.push(input.name);
-        }
-        if (input.type !== undefined) {
-            updates.push('type = ?');
-            params.push(input.type);
-        }
-        if (input.parentId !== undefined) {
-            updates.push('parent_id = ?');
-            params.push(input.parentId);
-        }
-
-        if (updates.length === 0) {
-            // No updates to make, return current account
-            return {
-                success: true,
-                data: mapRowToAccount(existingAccount),
-            };
-        }
-
-        params.push(input.id);
-
-        await runQuery(
-            `UPDATE accounts SET ${updates.join(', ')} WHERE id = ?`,
-            params
-        );
-
-        // Fetch the updated account
-        const updatedAccount = await getQuery<any>(
-            'SELECT * FROM accounts WHERE id = ?',
-            [input.id]
-        );
-
-        return {
-            success: true,
-            data: mapRowToAccount(updatedAccount!),
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to update account',
-            details: error instanceof Error ? error.message : error,
-        };
+export async function updateAccount(
+  id: number,
+  updates: {
+    code?: string;
+    name?: string;
+    type?: AccountType;
+    parentId?: number | null;
+  }
+): Promise<Account> {
+  const db = await getDb();
+  
+  // Check if account exists
+  const existingAccount = await db.get('SELECT id FROM accounts WHERE id = ?', id);
+  if (!existingAccount) {
+    throw new Error(`Account with id ${id} does not exist`);
+  }
+  
+  // Check if parent account exists (if provided)
+  if (updates.parentId !== undefined && updates.parentId !== null) {
+    const parentExists = await db.get('SELECT id FROM accounts WHERE id = ?', updates.parentId);
+    if (!parentExists) {
+      throw new Error(`Parent account with id ${updates.parentId} does not exist`);
     }
+  }
+  
+  // Check if new code is unique (if provided)
+  if (updates.code) {
+    const existingAccountWithCode = await db.get(
+      'SELECT id FROM accounts WHERE code = ? AND id != ?',
+      [updates.code, id]
+    );
+    if (existingAccountWithCode) {
+      throw new Error(`Account with code ${updates.code} already exists`);
+    }
+  }
+  
+  // Build update query
+  const fields: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.code !== undefined) {
+    fields.push('code = ?');
+    values.push(updates.code);
+  }
+  
+  if (updates.name !== undefined) {
+    fields.push('name = ?');
+    values.push(updates.name);
+  }
+  
+  if (updates.type !== undefined) {
+    fields.push('type = ?');
+    values.push(updates.type);
+  }
+  
+  if (updates.parentId !== undefined) {
+    fields.push('parent_id = ?');
+    values.push(updates.parentId);
+  }
+  
+  if (fields.length === 0) {
+    throw new Error('No updates provided');
+  }
+  
+  values.push(id);
+  
+  await db.run(`UPDATE accounts SET ${fields.join(', ')} WHERE id = ?`, values);
+  
+  const account = await db.get('SELECT * FROM accounts WHERE id = ?', id);
+  return account as Account;
 }
 
 /**
  * Get account by ID
  */
-export async function getAccountById(input: GetAccountByIdInput): Promise<ActionResult<Account>> {
-    try {
-        const account = await getQuery<any>(
-            'SELECT * FROM accounts WHERE id = ?',
-            [input.id]
-        );
-
-        if (!account) {
-            return {
-                success: false,
-                message: 'Account not found',
-                details: { id: input.id },
-            };
-        }
-
-        return {
-            success: true,
-            data: mapRowToAccount(account),
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to retrieve account',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function getAccountById(id: number): Promise<Account | null> {
+  const db = await getDb();
+  const account = await db.get('SELECT * FROM accounts WHERE id = ?', id);
+  return account as Account || null;
 }
 
 /**
  * List accounts with optional filtering
  */
-export async function listAccounts(input: ListAccountsInput): Promise<ActionResult<Account[]>> {
-    try {
-        let sql = 'SELECT * FROM accounts';
-        const params: any[] = [];
-        const conditions: string[] = [];
-
-        if (input.code) {
-            conditions.push('code LIKE ?');
-            params.push(`%${input.code}%`);
-        }
-
-        if (input.name) {
-            conditions.push('name LIKE ?');
-            params.push(`%${input.name}%`);
-        }
-
-        if (input.type) {
-            conditions.push('type = ?');
-            params.push(input.type);
-        }
-
-        if (conditions.length > 0) {
-            sql += ' WHERE ' + conditions.join(' AND ');
-        }
-
-        sql += ' ORDER BY code';
-
-        const accounts = await getAllQuery<any>(sql, params);
-
-        return {
-            success: true,
-            data: accounts.map(mapRowToAccount),
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to list accounts',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function listAccounts(
+  filter: {
+    code?: string;
+    name?: string;
+    type?: AccountType;
+  } = {}
+): Promise<Account[]> {
+  const db = await getDb();
+  
+  let query = 'SELECT * FROM accounts WHERE 1=1';
+  const params: any[] = [];
+  
+  if (filter.code) {
+    query += ' AND code LIKE ?';
+    params.push(`%${filter.code}%`);
+  }
+  
+  if (filter.name) {
+    query += ' AND name LIKE ?';
+    params.push(`%${filter.name}%`);
+  }
+  
+  if (filter.type) {
+    query += ' AND type = ?';
+    params.push(filter.type);
+  }
+  
+  query += ' ORDER BY code';
+  
+  const accounts = await db.all(query, params);
+  return accounts as Account[];
 }
 
 /**
- * Get all descendant account IDs (including the account itself)
+ * Get all descendant account IDs for an account
  */
-async function getDescendantAccountIds(accountId: number): Promise<number[]> {
-    const descendants: number[] = [accountId];
-    const queue: number[] = [accountId];
+export async function getDescendantAccountIds(accountId: number): Promise<number[]> {
+  const db = await getDb();
+  
+  // Recursive CTE to get all descendants
+  const query = `
+    WITH RECURSIVE descendants AS (
+      SELECT id FROM accounts WHERE parent_id = ?
+      UNION ALL
+      SELECT a.id FROM accounts a JOIN descendants d ON a.parent_id = d.id
+    )
+    SELECT id FROM descendants
+  `;
+  
+  const rows = await db.all(query, accountId);
+  return rows.map((row: any) => row.id);
+}
 
-    while (queue.length > 0) {
-        const currentId = queue.shift()!;
-        const children = await getAllQuery<{ id: number }>(
-            'SELECT id FROM accounts WHERE parent_id = ?',
-            [currentId]
-        );
-
-        for (const child of children) {
-            descendants.push(child.id);
-            queue.push(child.id);
-        }
-    }
-
-    return descendants;
+/**
+ * Check if an account or any of its descendants has journal lines
+ */
+export async function hasJournalLines(accountId: number): Promise<boolean> {
+  const db = await getDb();
+  
+  // Get all descendant account IDs
+  const descendantIds = await getDescendantAccountIds(accountId);
+  const allAccountIds = [accountId, ...descendantIds];
+  
+  // Check if any journal lines exist for these accounts
+  const placeholders = allAccountIds.map(() => '?').join(',');
+  const query = `SELECT COUNT(*) as count FROM journal_lines WHERE account_id IN (${placeholders})`;
+  
+  const result = await db.get(query, allAccountIds);
+  return (result as any).count > 0;
 }
 
 /**
  * Delete an account and all its descendants
  */
-export async function deleteAccount(input: DeleteAccountInput): Promise<ActionResult<{ deletedAccountIds: number[] }>> {
-    try {
-        // Check if account exists
-        const existingAccount = await getQuery<{ id: number }>(
-            'SELECT id FROM accounts WHERE id = ?',
-            [input.id]
-        );
-
-        if (!existingAccount) {
-            return {
-                success: false,
-                message: 'Account not found',
-                details: { id: input.id },
-            };
-        }
-
-        // Get all descendant accounts
-        const descendantIds = await getDescendantAccountIds(input.id);
-
-        // Check if any of the descendants have journal lines
-        const hasJournalLines = await getQuery<{ count: number }>(
-            `SELECT COUNT(*) as count FROM journal_lines WHERE account_id IN (${descendantIds.map(() => '?').join(',')})`,
-            descendantIds
-        );
-
-        if (hasJournalLines && hasJournalLines.count > 0) {
-            return {
-                success: false,
-                message: 'Cannot delete account with associated journal entries',
-                details: { accountId: input.id, journalLinesCount: hasJournalLines.count },
-            };
-        }
-
-        // Delete all descendant accounts (parent will cascade)
-        await runTransaction([
-            async () => {
-                await runQuery('DELETE FROM accounts WHERE id = ?', [input.id]);
-            }
-        ]);
-
-        return {
-            success: true,
-            data: { deletedAccountIds: descendantIds },
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: 'Failed to delete account',
-            details: error instanceof Error ? error.message : error,
-        };
-    }
+export async function deleteAccount(id: number): Promise<number[]> {
+  const db = await getDb();
+  
+  // Check if account exists
+  const existingAccount = await getAccountById(id);
+  if (!existingAccount) {
+    throw new Error(`Account with id ${id} does not exist`);
+  }
+  
+  // Check if account or any descendants have journal lines
+  const hasLines = await hasJournalLines(id);
+  if (hasLines) {
+    throw new Error('Cannot delete account with journal entries or its descendants');
+  }
+  
+  // Get all descendant account IDs
+  const descendantIds = await getDescendantAccountIds(id);
+  const allAccountIds = [id, ...descendantIds];
+  
+  // Delete all accounts in a transaction
+  const deletedIds: number[] = [];
+  
+  for (const accountId of allAccountIds) {
+    await db.run('DELETE FROM accounts WHERE id = ?', accountId);
+    deletedIds.push(accountId);
+  }
+  
+  return deletedIds;
 }
