@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-lojik-accounting",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "description": "Lojik Accounting - An n8n Community Tool for managing accounts, journal entries, and generating financial reports",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
