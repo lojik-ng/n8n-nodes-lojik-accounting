@@ -1,12 +1,12 @@
 import { DateTime } from 'luxon';
-import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection.js';
-import type { JournalEntry, JournalLine, JournalEntryWithLines, ActionResult } from '../types/index.js';
+import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection';
+import type { JournalEntry, JournalLine, JournalEntryWithLines, ActionResult } from '../types/index';
 import type {
     CreateJournalEntryInput,
     DeleteJournalEntryInput,
     GetJournalEntryByIdInput,
     SearchJournalEntriesInput,
-} from '../validation/schemas.js';
+} from '../validation/schemas';
 
 /**
  * Map database row to JournalEntry interface

@@ -1,8 +1,8 @@
-import Database from 'better-sqlite3';
+import Database = require('better-sqlite3');
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve, isAbsolute } from 'path';
 import { existsSync, mkdirSync } from 'fs';
-import type { DatabaseConfig, LojikAccountingCredentials } from '../types/index.js';
+import type { DatabaseConfig, LojikAccountingCredentials } from '../types/index';
 
 // Use process.cwd() as package root (simpler for both runtime and tests)
 const packageRoot = process.cwd();

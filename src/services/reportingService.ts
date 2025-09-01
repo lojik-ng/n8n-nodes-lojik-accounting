@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { getQuery, getAllQuery } from '../db/connection.js';
+import { getQuery, getAllQuery } from '../db/connection';
 import type {
     TrialBalanceReport,
     TrialBalanceItem,
@@ -13,13 +13,13 @@ import type {
     ProfitLossItem,
     ActionResult,
     AccountType,
-} from '../types/index.js';
+} from '../types/index';
 import type {
     GetTrialBalanceInput,
     GetLedgerInput,
     GetBalanceSheetInput,
     GetProfitLossInput,
-} from '../validation/schemas.js';
+} from '../validation/schemas';
 
 /**
  * Get trial balance report

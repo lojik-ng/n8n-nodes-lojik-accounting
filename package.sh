@@ -8,6 +8,7 @@ git stash
 npm version patch
 git stash pop
 npm run build
+npm commit -m "chore: build and publish package"
 git push
 git push --tags
 npm publish --access public

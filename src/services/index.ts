@@ -5,7 +5,7 @@ export {
     getAccountById,
     listAccounts,
     deleteAccount,
-} from './accountService.js';
+} from './accountService';
 
 // Journal services
 export {
@@ -14,7 +14,7 @@ export {
     getJournalEntryById,
     searchJournalEntries,
     closePeriod,
-} from './journalService.js';
+} from './journalService';
 
 // Reporting services
 export {
@@ -22,4 +22,4 @@ export {
     getLedger,
     getBalanceSheet,
     getProfitLoss,
-} from './reportingService.js';
+} from './reportingService';

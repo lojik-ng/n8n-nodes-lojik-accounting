@@ -3,7 +3,7 @@ import {
     createAccountInputSchema,
     createJournalEntryInputSchema,
     lojikAccountingCredentialsSchema,
-} from '../schemas.js';
+} from '../schemas';
 
 describe('Validation Schemas', () => {
     describe('createAccountInputSchema', () => {

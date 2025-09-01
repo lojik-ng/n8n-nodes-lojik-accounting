@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { initializeDatabaseConnection } from '../../db/connection.js';
-import { createAccount } from '../accountService.js';
+import { initializeDatabaseConnection } from '../../db/connection';
+import { createAccount } from '../accountService';
 import {
     createJournalEntry,
     deleteJournalEntry,
     getJournalEntryById,
     searchJournalEntries,
     closePeriod,
-} from '../journalService.js';
-import type { DatabaseConfig } from '../../types/index.js';
+} from '../journalService';
+import type { DatabaseConfig } from '../../types/index';
 
 const testConfig: DatabaseConfig = {
     filePath: ':memory:',

@@ -1,4 +1,4 @@
-import { closeDatabaseConnection } from '../db/connection.js';
+import { closeDatabaseConnection } from '../db/connection';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 

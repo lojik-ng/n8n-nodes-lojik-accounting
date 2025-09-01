@@ -1,17 +1,9 @@
-export default {
-    preset: 'ts-jest/presets/default-esm',
-    extensionsToTreatAsEsm: ['.ts'],
-    transform: {
-        '^.+\\.ts$': ['ts-jest', {
-            useESM: true,
-            tsconfig: {
-                module: 'es2022',
-                target: 'ES2022',
-                moduleResolution: 'node',
-            },
-        }],
-    },
+module.exports = {
+    preset: 'ts-jest',
     testEnvironment: 'node',
+    transform: {
+        '^.+\\.ts$': 'ts-jest'
+    },
     setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
     collectCoverageFrom: [
         'src/**/*.ts',
@@ -28,7 +20,4 @@ export default {
         },
     },
     testMatch: ['<rootDir>/src/**/*.test.ts'],
-    moduleNameMapper: {
-        '^(\\.{1,2}/.*)\\.js$': '$1',
-    },
 };

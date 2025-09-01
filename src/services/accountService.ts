@@ -1,12 +1,12 @@
-import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection.js';
-import type { Account, ActionResult } from '../types/index.js';
+import { runQuery, getQuery, getAllQuery, runTransaction } from '../db/connection';
+import type { Account, ActionResult } from '../types/index';
 import type {
     CreateAccountInput,
     UpdateAccountInput,
     GetAccountByIdInput,
     ListAccountsInput,
     DeleteAccountInput,
-} from '../validation/schemas.js';
+} from '../validation/schemas';
 
 /**
  * Map database row to Account interface

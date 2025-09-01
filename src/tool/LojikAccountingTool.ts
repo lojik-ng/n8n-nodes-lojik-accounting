@@ -6,8 +6,8 @@ import type {
     INodeTypeDescription,
 } from 'n8n-workflow';
 
-import { initializeDatabaseConnection } from '../db/connection.js';
-import type { LojikAccountingCredentials, DatabaseConfig, ActionResult } from '../types/index.js';
+import { initializeDatabaseConnection } from '../db/connection';
+import type { LojikAccountingCredentials, DatabaseConfig, ActionResult } from '../types/index';
 import {
     lojikAccountingCredentialsSchema,
     createAccountInputSchema,
@@ -24,7 +24,7 @@ import {
     getBalanceSheetInputSchema,
     getProfitLossInputSchema,
     closePeriodInputSchema,
-} from '../validation/schemas.js';
+} from '../validation/schemas';
 
 import {
     createAccount,
@@ -41,7 +41,7 @@ import {
     getLedger,
     getBalanceSheet,
     getProfitLoss,
-} from '../services/index.js';
+} from '../services/index';
 
 // Handler functions
 async function handleCreateAccount(context: IExecuteFunctions, itemIndex: number): Promise<ActionResult<any>> {
@@ -724,3 +724,5 @@ export class LojikAccountingTool implements INodeType {
         return [this.helpers.returnJsonArray(returnData)];
     }
 }
+
+module.exports = { LojikAccountingTool };

@@ -36,3 +36,5 @@ export class LojikAccountingApi implements ICredentialType {
         },
     ];
 }
+
+module.exports = { LojikAccountingApi };
